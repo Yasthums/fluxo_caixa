@@ -1,0 +1,57 @@
+import pandas as pd
+from datetime import datetime
+
+# Verificando as colunas do DataFrame
+print("Colunas iniciais de df_caixa:", df_caixa.columns)
+
+# Convertendo colunas para os tipos apropriados
+df_caixa['DATAVENCIMENTO'] = pd.to_datetime(df_caixa['DATAVENCIMENTO'], errors='coerce')
+df_caixa['VALORPARCELA'] = pd.to_numeric(df_caixa['VALORPARCELA'], errors='coerce')
+df_caixa['VALORTOTALLIQUIDO'] = pd.to_numeric(df_caixa['VALORTOTALLIQUIDO'], errors='coerce')
+df_caixa['NUMEROPARCELA'] = pd.to_numeric(df_caixa['NUMEROPARCELA'], errors='coerce')
+
+# Extraindo mês e ano da coluna 'DATAVENCIMENTO' para criar 'mes_ano' no formato desejado
+df_caixa['mes_ano'] = df_caixa['DATAVENCIMENTO'].dt.strftime('%m/%y')
+
+# Agrupando os dados e calculando a soma e contagem
+df_grouped = df_caixa.groupby(
+    ['CODIGO', 'NOMEFANTASIA', 'NOME', 'CPF', 'VALORTOTALLIQUIDO']
+).agg(
+    somar_valorparcela=('VALORPARCELA', 'sum'),
+    numeroparcela=('NUMEROPARCELA', 'count'),
+    max_parcela=('NUMEROPARCELA', 'max')
+).reset_index()
+
+# Adicionando a coluna 'valorpago' e 'parcelas_pagas'
+df_grouped['valorpago'] = df_grouped['VALORTOTALLIQUIDO'] - df_grouped['somar_valorparcela']
+df_grouped['parcelas_pagas'] = df_grouped['max_parcela'] - df_grouped['numeroparcela']
+
+# Removendo a coluna 'max_parcela' (se não quiser mantê-la no DataFrame final)
+df_grouped = df_grouped.drop(columns=['max_parcela'])
+
+# Criando uma tabela pivot com colunas para cada 'mes_ano' e valores de 'VALORPARCELA'
+df_pivot = df_caixa.pivot_table(
+    index=['CODIGO', 'NOMEFANTASIA', 'NOME', 'CPF', 'VALORTOTALLIQUIDO'],
+    columns='mes_ano',
+    values='VALORPARCELA',
+    aggfunc='sum'
+).reset_index()
+
+# Identificar as colunas de data (mes_ano) e ordenar cronologicamente
+data_cols = [col for col in df_pivot.columns if isinstance(col, str) and '/' in col]
+sorted_data_cols = sorted(data_cols, key=lambda x: pd.to_datetime(x, format='%m/%y'))
+
+# Reorganizar df_pivot para colocar as colunas de data em ordem cronológica
+df_pivot = df_pivot[['CODIGO', 'NOMEFANTASIA', 'NOME', 'CPF', 'VALORTOTALLIQUIDO'] + sorted_data_cols]
+
+# Unindo os resultados para obter o layout final
+df_final = pd.merge(df_grouped, df_pivot, on=['CODIGO', 'NOMEFANTASIA', 'NOME', 'CPF', 'VALORTOTALLIQUIDO'], how='left')
+
+# Garantindo que não haja duplicatas na coluna 'CODIGO'
+df_final = df_final.drop_duplicates(subset=['CODIGO'])
+
+# Exibindo o DataFrame final
+print("Colunas de df_final:", df_final.columns)
+total = df_final['somar_valorparcela'].sum()
+print(total)
+print(df_final)
